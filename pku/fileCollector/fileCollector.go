@@ -2,6 +2,7 @@ package fileCollector
 
 import (
 	"fmt"
+	"github.com/pkg/errors"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -14,6 +15,7 @@ type fileCollector struct {
 	root     string
 	output   string
 	rewrites map[string]string
+	pathResolver pathResolver
 }
 
 func New(entry string, root string, output string) *fileCollector {
@@ -22,33 +24,38 @@ func New(entry string, root string, output string) *fileCollector {
 		root:     root,
 		output:   output,
 		rewrites: make(map[string]string, 0),
+		pathResolver: pathResolver{
+			projectRoot:   root,
+			entryFilePath: entry,
+			outputPath: output,
+		},
 	}
 }
 
 func (f *fileCollector) Collect() {
-	f.collect(f.entry)
+	originFilePath := filepath.Join(f.root, f.entry)
+	f.collect(originFilePath)
 }
 
-func (f fileCollector) collect(importPath string) {
-	entryPointAbsPath := filepath.Join(f.root, importPath)
-	file, err := ioutil.ReadFile(entryPointAbsPath)
+func (f fileCollector) collect(originFilePath string) {
+	file, err := f.getFile(originFilePath)
 	if err != nil {
-		fmt.Println(err)
+		fmt.Println(errors.Wrap(err, "collectRoot"))
 	}
 
 	lines := strings.Split(string(file), "\n")
 	for _, line := range lines {
-		if f.isCommonJs(line) {
-
+		if f.isES6Module(line) {
+			f.parseES6Module(line, originFilePath)
 		}
 
-		if f.isES6Module(line) {
-			f.parseES6Module(line)
+		if f.isCommonJs(line) {
+			// Implement commonJs
 		}
 	}
 
 	toFile := f.rewriteExternalReferencesToFile(string(file))
-	path, err := f.getOutputPath(importPath)
+	path, err := f.pathResolver.GetDestFileLocation(originFilePath)
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -59,7 +66,7 @@ func (f fileCollector) collect(importPath string) {
 	}
 }
 
-func (f *fileCollector) parseES6Module(line string) {
+func (f *fileCollector) parseES6Module(line, currentOriginFilePath string) {
 	var importPath string
 	if !strings.Contains(line, "from") {
 		// TODO: handle un-named imports "import babel/regenerator"
@@ -67,14 +74,8 @@ func (f *fileCollector) parseES6Module(line string) {
 		return
 	}
 
-	importPath = strings.Split(line, "from")[1]
-	importPath = strings.ReplaceAll(importPath, " ", "")
-	importPath = strings.ReplaceAll(importPath, ";", "")
-	importPath = strings.ReplaceAll(importPath, "'", "")
-	importPath = strings.ReplaceAll(importPath, "\"", "")
-	importPath = fmt.Sprintf("%v.js", importPath)
-
-	if f.isExternalReference(importPath) {
+	importPath = f.pathResolver.ExtractImportPathFromLine(line)
+	if f.pathResolver.IsExternalReference(importPath) {
 		f.addRewrites(line)
 	}
 
@@ -84,27 +85,28 @@ func (f *fileCollector) parseES6Module(line string) {
 		return
 	}
 
-	if err := f.moveFileToDest(importPath); err != nil {
+	originFileLocation := f.pathResolver.GetOriginFileLocation(currentOriginFilePath, importPath)
+	if err := f.moveFileToDest(originFileLocation); err != nil {
 		fmt.Println(err)
 		return
 	}
 
-	f.collect(importPath)
+	f.collect(originFileLocation)
 }
 
-func (f *fileCollector) moveFileToDest(importPath string) error {
-	file, err := f.getFile(importPath)
+func (f *fileCollector) moveFileToDest(originFileLocation string) error {
+	file, err := f.getFile(originFileLocation)
 	if err != nil {
 		return err
 	}
 
-	outputPath, err := f.getOutputPath(importPath)
+	outputPath, err := f.pathResolver.GetDestFileLocation(originFileLocation)
 	if err != nil {
 		return err
 	}
 
 	if err := f.saveFile(outputPath, file); err != nil {
-		return err
+		return errors.Wrap(err, "saveFile\n")
 	}
 
 	return nil
@@ -112,37 +114,23 @@ func (f *fileCollector) moveFileToDest(importPath string) error {
 
 func (f fileCollector) saveFile(outputPath string, file []byte) error {
 	if err := os.MkdirAll(filepath.Dir(outputPath), 0770); err != nil {
-		return err
+		return errors.Wrap(err, "MkdirAll\n")
 	}
 
 	if err := ioutil.WriteFile(outputPath, file, os.ModePerm); err != nil {
-		return err
+		return errors.Wrap(err, "writeFile\n")
 	}
 
 	return nil
 }
 
 func (f fileCollector) getFile(importPath string) ([]byte, error) {
-	originalPath := filepath.Join(f.root, importPath)
-	file, err := ioutil.ReadFile(originalPath)
+	file, err := ioutil.ReadFile(importPath)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "getFile\n")
 	}
 
 	return file, err
-}
-
-func (f fileCollector) getOutputPath(importPath string) (string, error) {
-	outputPath, err := filepath.Abs(f.output)
-	if err != nil {
-		return "", err
-	}
-	if f.isExternalReference(importPath) {
-		importPath = f.rewritePath(importPath)
-	}
-
-	outputPath = filepath.Join(outputPath, importPath)
-	return outputPath, err
 }
 
 func (f *fileCollector) isCommonJs(line string) bool {
@@ -167,15 +155,6 @@ func (f *fileCollector) isNodeModule(importPath string) bool {
 	}
 
 	return true
-}
-
-// does file exists in the parent directories?
-func (f fileCollector) isExternalReference(path string) bool {
-	if strings.Contains(path, "../") {
-		return true
-	}
-
-	return false
 }
 
 // Change all the imports of external references into the new path
