@@ -24,7 +24,7 @@ func Test_pathResolver_ChangeMovedFileImportPath(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			f := pathResolver{}
 
-			newPath := f.ChangeMovedFileImportPath(tt.args.path, "", "")
+			newPath := f.ChangeMovedFileImportPath(tt.args.path, "")
 
 			g.Expect(newPath).Should(gomega.Equal(tt.want))
 		})
@@ -77,6 +77,38 @@ func Test_pathResolver_GetDestFileLocation(t *testing.T) {
 				g.Expect(err).Should(gomega.HaveOccurred())
 			} else {
 				g.Expect(err).ShouldNot(gomega.HaveOccurred())
+			}
+		})
+	}
+}
+
+func Test_pathResolver_ChangeMovedFileImportPath1(t *testing.T) {
+	type fields struct {
+		projectRoot   string
+		entryFilePath string
+		outputPath    string
+	}
+	type args struct {
+		line       string
+		importPath string
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		args   args
+		want   string
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := pathResolver{
+				projectRoot:   tt.fields.projectRoot,
+				entryFilePath: tt.fields.entryFilePath,
+				outputPath:    tt.fields.outputPath,
+			}
+			if got := r.ChangeMovedFileImportPath(tt.args.line, tt.args.importPath); got != tt.want {
+				t.Errorf("ChangeMovedFileImportPath() = %v, want %v", got, tt.want)
 			}
 		})
 	}

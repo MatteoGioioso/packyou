@@ -2,6 +2,7 @@ package fileCollector
 
 import (
 	"fmt"
+	"packyou/pku/errorPkg"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -41,22 +42,12 @@ func (r pathResolver) GetOriginFileLocation(currentOriginFilePath, importPath st
 func (r pathResolver) GetDestFileLocation(currentOriginFilePath string) (string, error) {
 	outputPath, err := filepath.Abs(r.outputPath)
 	if err != nil {
-		return "", err
+		return "", errorPkg.New(err, "GetDestFileLocation")
 	}
 
-	rootPath := filepath.Join(r.projectRoot, r.entryFilePath)
-	if len(currentOriginFilePath) < len(rootPath) {
-		outputPath = filepath.Join(
-			outputPath,
-			filepath.Dir(r.entryFilePath),
-			filepath.Base(currentOriginFilePath),
-		)
-		outputPath = strings.ReplaceAll(outputPath, filepath.Dir("/"+r.entryFilePath), "")
-	} else {
-		outputPath = filepath.Join(outputPath, currentOriginFilePath)
-		outputPath = strings.ReplaceAll(outputPath, r.projectRoot, "")
-		outputPath = strings.ReplaceAll(outputPath, filepath.Dir("/"+r.entryFilePath), "")
-	}
+	entryFolderName := r.getEntryFolderName()
+	fileName := filepath.Base(currentOriginFilePath)
+	outputPath = filepath.Join(outputPath, entryFolderName, fileName)
 
 	return outputPath, err
 }
@@ -69,40 +60,19 @@ func (r pathResolver) IsExternalReference(path string) bool {
 	return false
 }
 
-// ChangeMovedFileImportPath since we are moving all the external references to the root
+// ChangeMovedFileImportPath since we are moving all the references to the root
 // of the function we need to modify the import path
-func (r pathResolver) ChangeMovedFileImportPath(line string, currentOriginPath string, importPath string) string {
+func (r pathResolver) ChangeMovedFileImportPath(line string, importPath string) string {
 	var newPath string
+	importPathDir := filepath.Dir(importPath)
+	// Count how many "../" (go to parent we have)
 	aORb := regexp.MustCompile("\\.\\./") // Match ../
-
-	// We calculate the difference between the two paths so we can identify how many
-	// times the external reference is far from our entry folder
-	base := strings.ReplaceAll(importPath, "../", "")
-	pathAfter := strings.ReplaceAll(currentOriginPath, base, "")
-	diff := len(strings.Split(r.getEntryAbs(), "/")) - len(strings.Split(pathAfter, "/"))
-
-	// If bigger than one means that we are 2 times outside the entry folder
-	if diff > 0 {
-		// If we remain without "../" we need to add a relative import "./"
-		// otherwise nodejs will look in node_modules
-		replacedPath := strings.Replace(line, "../", "", diff+1)
-		matches := aORb.FindAllString(replacedPath, -1)
-
-		if len(matches) == 0 {
-			newPath = strings.Replace(line, "../", "", diff)
-			newPath = strings.Replace(newPath, "../", "./", 1)
-		} else {
-			newPath = replacedPath
-		}
-	} else {
-		// If 0 then it means we are in the entry folder
-		matches := aORb.FindAllStringIndex(line, -1)
-		if len(matches) > 1 {
-			newPath = strings.Replace(line, "../", "", 1)
-		} else {
-			newPath = strings.Replace(line, "../", "./", 1)
-		}
-	}
+	matches := aORb.FindAllString(importPath, -1)
+	// Remove all the "../" and add "./"
+	newPath = strings.Replace(line, "../", "", len(matches)-1)
+	newPath = strings.Replace(newPath, "../", "./", 1)
+	// Remove the sub directories by replacing with the import path directory
+	newPath = strings.Replace(newPath, importPathDir+"/", "", 1)
 
 	return newPath
 }

@@ -5,15 +5,16 @@ import (
 	"github.com/pkg/errors"
 	"io/ioutil"
 	"os"
+	"packyou/pku/errorPkg"
 	"path/filepath"
 	"strings"
 )
 
 type fileCollector struct {
-	entry    string
-	root     string
-	output   string
-	rewrites map[string]string
+	entry        string
+	root         string
+	output       string
+	rewrites     map[string]string
 	pathResolver pathResolver
 }
 
@@ -26,7 +27,7 @@ func New(entry string, root string, output string) *fileCollector {
 		pathResolver: pathResolver{
 			projectRoot:   root,
 			entryFilePath: entry,
-			outputPath: output,
+			outputPath:    output,
 		},
 	}
 }
@@ -39,7 +40,7 @@ func (f *fileCollector) Collect() {
 func (f fileCollector) collect(originFilePath string) {
 	file, err := f.getFile(originFilePath)
 	if err != nil {
-		fmt.Println(errors.Wrap(err, "collectRoot"))
+		fmt.Println(errorPkg.New(err, "collect"))
 	}
 
 	lines := strings.Split(string(file), "\n")
@@ -86,9 +87,7 @@ func (f *fileCollector) parseES6Module(line, currentOriginFilePath string) {
 		return
 	}
 
-	if f.pathResolver.IsExternalReference(importPath) {
-		f.addRewrites(line, originFileLocation, importPath)
-	}
+	f.addRewrites(line, importPath)
 
 	f.collect(originFileLocation)
 }
@@ -126,7 +125,7 @@ func (f fileCollector) saveFile(outputPath string, file []byte) error {
 func (f fileCollector) getFile(importPath string) ([]byte, error) {
 	file, err := ioutil.ReadFile(importPath)
 	if err != nil {
-		return nil, errors.Wrap(err, "getFile\n")
+		return nil, errorPkg.New(err, "getFile")
 	}
 
 	return file, err
@@ -166,7 +165,7 @@ func (f fileCollector) rewriteExternalReferencesToFile(file string) string {
 }
 
 // This function store reference that are outside ../
-func (f *fileCollector) addRewrites(path string, currentOriginPath string, importPath string) {
-	newPath := f.pathResolver.ChangeMovedFileImportPath(path, currentOriginPath, importPath)
+func (f *fileCollector) addRewrites(path string, importPath string) {
+	newPath := f.pathResolver.ChangeMovedFileImportPath(path, importPath)
 	f.rewrites[path] = newPath
 }
