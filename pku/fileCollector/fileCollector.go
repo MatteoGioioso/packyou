@@ -6,7 +6,6 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 )
 
@@ -75,10 +74,6 @@ func (f *fileCollector) parseES6Module(line, currentOriginFilePath string) {
 	}
 
 	importPath = f.pathResolver.ExtractImportPathFromLine(line)
-	if f.pathResolver.IsExternalReference(importPath) {
-		f.addRewrites(line)
-	}
-
 	if f.isNodeModule(importPath) {
 		// TODO: for now just copy node_modules into the dest folder
 		// no-op
@@ -89,6 +84,10 @@ func (f *fileCollector) parseES6Module(line, currentOriginFilePath string) {
 	if err := f.moveFileToDest(originFileLocation); err != nil {
 		fmt.Println(err)
 		return
+	}
+
+	if f.pathResolver.IsExternalReference(importPath) {
+		f.addRewrites(line, originFileLocation, importPath)
 	}
 
 	f.collect(originFileLocation)
@@ -166,22 +165,8 @@ func (f fileCollector) rewriteExternalReferencesToFile(file string) string {
 	return file
 }
 
-func (f fileCollector) rewritePath(path string) string {
-	aORb := regexp.MustCompile("../")
-	matches := aORb.FindAllStringIndex(path, -1)
-
-	var newPath string
-	if len(matches) > 1 {
-		newPath = strings.Replace(path, "../", "", 1)
-	} else {
-		newPath = strings.ReplaceAll(path, "../", "./")
-	}
-
-	return newPath
-}
-
 // This function store reference that are outside ../
-func (f *fileCollector) addRewrites(path string) {
-	newPath := f.rewritePath(path)
+func (f *fileCollector) addRewrites(path string, currentOriginPath string, importPath string) {
+	newPath := f.pathResolver.ChangeMovedFileImportPath(path, currentOriginPath, importPath)
 	f.rewrites[path] = newPath
 }
