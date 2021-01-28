@@ -5,7 +5,9 @@ import (
 	"github.com/pkg/errors"
 	"io/ioutil"
 	"os"
+	"packyou/pku/compiler"
 	"packyou/pku/errorPkg"
+	"packyou/pku/pathResolver"
 	"path/filepath"
 	"strings"
 )
@@ -15,20 +17,19 @@ type fileCollector struct {
 	root         string
 	output       string
 	rewrites     map[string]string
-	pathResolver pathResolver
+	pathResolver pathResolver.PathResolver
+	compiler     compiler.Compiler
 }
 
 func New(entry string, root string, output string) *fileCollector {
+	pr := pathResolver.New(root, entry, output)
 	return &fileCollector{
-		entry:    entry,
-		root:     root,
-		output:   output,
-		rewrites: make(map[string]string, 0),
-		pathResolver: pathResolver{
-			projectRoot:   root,
-			entryFilePath: entry,
-			outputPath:    output,
-		},
+		entry:        entry,
+		root:         root,
+		output:       output,
+		rewrites:     make(map[string]string, 0),
+		pathResolver: pr,
+		compiler: compiler.New(pr),
 	}
 }
 
@@ -45,11 +46,11 @@ func (f fileCollector) collect(originFilePath string) {
 
 	lines := strings.Split(string(file), "\n")
 	for _, line := range lines {
-		if f.isES6Module(line) {
+		if f.pathResolver.IsES6Module(line) {
 			f.parseES6Module(line, originFilePath)
 		}
 
-		if f.isCommonJs(line) {
+		if f.pathResolver.IsCommonJs(line) {
 			// Implement commonJs
 		}
 	}
@@ -68,14 +69,14 @@ func (f fileCollector) collect(originFilePath string) {
 
 func (f *fileCollector) parseES6Module(line, currentOriginFilePath string) {
 	var importPath string
-	if !strings.Contains(line, "from") {
+	if f.pathResolver.IsUnnamedES6Import(line) {
 		// TODO: handle un-named imports "import babel/regenerator"
 		// no-op
 		return
 	}
 
 	importPath = f.pathResolver.ExtractImportPathFromLine(line)
-	if f.isNodeModule(importPath) {
+	if f.pathResolver.IsNodeModule(importPath) {
 		// TODO: for now just copy node_modules into the dest folder
 		// no-op
 		return
@@ -87,7 +88,7 @@ func (f *fileCollector) parseES6Module(line, currentOriginFilePath string) {
 		return
 	}
 
-	f.addRewrites(line, importPath)
+	f.addES6Rewrites(line, importPath)
 
 	f.collect(originFileLocation)
 }
@@ -131,30 +132,6 @@ func (f fileCollector) getFile(importPath string) ([]byte, error) {
 	return file, err
 }
 
-func (f *fileCollector) isCommonJs(line string) bool {
-	if strings.Contains(line, "require(") {
-		return true
-	}
-
-	return false
-}
-
-func (f *fileCollector) isES6Module(line string) bool {
-	if strings.Contains(line, "import") {
-		return true
-	}
-
-	return false
-}
-
-func (f *fileCollector) isNodeModule(importPath string) bool {
-	if strings.HasPrefix(importPath, "./") || strings.HasPrefix(importPath, "../") {
-		return false
-	}
-
-	return true
-}
-
 // Change all the imports of external references into the new path
 func (f fileCollector) rewriteExternalReferencesToFile(file string) string {
 	for oldPath, newPath := range f.rewrites {
@@ -165,7 +142,8 @@ func (f fileCollector) rewriteExternalReferencesToFile(file string) string {
 }
 
 // This function store reference that are outside ../
-func (f *fileCollector) addRewrites(path string, importPath string) {
-	newPath := f.pathResolver.ChangeMovedFileImportPath(path, importPath)
-	f.rewrites[path] = newPath
+func (f *fileCollector) addES6Rewrites(line string, importPath string) {
+	newLine, newImportPath := f.pathResolver.ChangeMovedFileImportPath(line, importPath)
+	newLine = f.compiler.TransformImport(newLine, newImportPath)
+	f.rewrites[line] = newLine
 }

@@ -1,4 +1,4 @@
-package fileCollector
+package pathResolver
 
 import (
 	"fmt"
@@ -12,6 +12,10 @@ type pathResolver struct {
 	projectRoot   string
 	entryFilePath string
 	outputPath    string
+}
+
+func New(projectRoot string, entryFilePath string, outputPath string) *pathResolver {
+	return &pathResolver{projectRoot: projectRoot, entryFilePath: entryFilePath, outputPath: outputPath}
 }
 
 func (r pathResolver) GetRawImportPathForES6Module(line string) string {
@@ -45,49 +49,89 @@ func (r pathResolver) GetDestFileLocation(currentOriginFilePath string) (string,
 		return "", errorPkg.New(err, "GetDestFileLocation")
 	}
 
-	entryFolderName := r.getEntryFolderName()
+	entryFolderName := r.GetEntryFolderName()
 	fileName := filepath.Base(currentOriginFilePath)
 	outputPath = filepath.Join(outputPath, entryFolderName, fileName)
 
 	return outputPath, err
 }
 
-func (r pathResolver) IsExternalReference(path string) bool {
-	if strings.Contains(path, "../") {
-		return true
-	}
-
-	return false
-}
-
 // ChangeMovedFileImportPath since we are moving all the references to the root
 // of the function we need to modify the import path
-func (r pathResolver) ChangeMovedFileImportPath(line string, importPath string) string {
-	var newPath string
+func (r pathResolver) ChangeMovedFileImportPath(line string, importPath string) (newImportPath, newLine string) {
 	importPathDir := filepath.Dir(importPath)
+	newLine = strings.ReplaceAll(line, importPath, "#__#")
+
 	// Count how many "../" (go to parent we have)
 	aORb := regexp.MustCompile("\\.\\./") // Match ../
 	matches := aORb.FindAllString(importPath, -1)
 	// Remove all the "../" and add "./"
-	newPath = strings.Replace(line, "../", "", len(matches)-1)
-	newPath = strings.Replace(newPath, "../", "./", 1)
+	newImportPath = strings.Replace(importPath, "../", "", len(matches)-1)
+	newImportPath = strings.Replace(newImportPath, "../", "./", 1)
 	// Remove the sub directories by replacing with the import path directory
-	newPath = strings.Replace(newPath, importPathDir+"/", "", 1)
+	newImportPath = strings.Replace(newImportPath, importPathDir+"/", "", 1)
 
-	return newPath
+	newLine = strings.ReplaceAll(line, "#__#", newImportPath)
+
+	return newLine, newImportPath
 }
 
-func (r pathResolver) getEntryAbs() string {
+func (r pathResolver) GetEntryAbs() string {
 	return filepath.Join(
 		r.projectRoot,
 		filepath.Dir(r.entryFilePath),
 	)
 }
 
-func (r pathResolver) getAbsEntryFilePath() string {
+func (r pathResolver) GetAbsEntryFilePath() string {
 	return filepath.Join(r.projectRoot, r.entryFilePath)
 }
 
-func (r pathResolver) getEntryFolderName() string {
+func (r pathResolver) GetEntryFolderName() string {
 	return filepath.Base(filepath.Dir(r.entryFilePath))
+}
+
+func (r pathResolver) IsCommonJs(line string) bool {
+	if strings.Contains(line, "require(") {
+		return true
+	}
+
+	return false
+}
+
+func (r pathResolver) IsES6Module(line string) bool {
+	if strings.Contains(line, "import") {
+		return true
+	}
+
+	return false
+}
+
+func (r pathResolver) IsNodeModule(importPath string) bool {
+	if strings.HasPrefix(importPath, "./") || strings.HasPrefix(importPath, "../") {
+		return false
+	}
+
+	return true
+}
+
+func (r pathResolver) IsUnnamedES6Import(line string) bool {
+	return !strings.Contains(line, "from")
+}
+
+
+type PathResolver interface {
+	GetRawImportPathForES6Module(line string) string
+	ExtractImportPathFromLine(line string) string
+	CleanRawImportPath(rawImportPath string) string
+	GetOriginFileLocation(currentOriginFilePath, importPath string) string
+	GetDestFileLocation(currentOriginFilePath string) (string, error)
+	ChangeMovedFileImportPath(line string, importPath string) (newLine string, newImportPath string)
+	GetEntryAbs() string
+	GetAbsEntryFilePath() string
+	GetEntryFolderName() string
+	IsCommonJs(line string) bool
+	IsES6Module(line string) bool
+	IsNodeModule(importPath string) bool
+	IsUnnamedES6Import(line string) bool
 }

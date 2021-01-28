@@ -6,7 +6,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"os"
-	"packyou/pku/fileCollector"
 )
 
 var cfgFile string
@@ -19,10 +18,7 @@ var rootCmd = &cobra.Command{
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
 	Run: func(cmd *cobra.Command, args []string) {
-		entry := cmd.Flag("entry").Value.String()
-		projectRoot := cmd.Flag("projectRoot").Value.String()
-		output := cmd.Flag("output").Value.String()
-		fileCollector.New(entry, projectRoot, output).Collect()
+		initializeCommand(cmd, viper.Get)
 	},
 }
 
@@ -48,7 +44,7 @@ func init() {
 	rootCmd.Flags().StringVarP(&ProjectRoot, "projectRoot", "r", "", "project root folder")
 	rootCmd.Flags().StringVarP(&Output, "output", "o", "", "output path")
 
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.packyou.yaml)")
+	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.pku.yaml)")
 
 	// Cobra also supports local flags, which will only run
 	// when this action is called directly.

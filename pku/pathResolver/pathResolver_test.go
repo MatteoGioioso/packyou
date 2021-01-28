@@ -1,4 +1,4 @@
-package fileCollector
+package pathResolver
 
 import (
 	"github.com/onsi/gomega"
@@ -24,7 +24,7 @@ func Test_pathResolver_ChangeMovedFileImportPath(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			f := pathResolver{}
 
-			newPath := f.ChangeMovedFileImportPath(tt.args.path, "")
+			newPath, _ := f.ChangeMovedFileImportPath(tt.args.path, "")
 
 			g.Expect(newPath).Should(gomega.Equal(tt.want))
 		})
@@ -93,10 +93,11 @@ func Test_pathResolver_ChangeMovedFileImportPath1(t *testing.T) {
 		importPath string
 	}
 	tests := []struct {
-		name   string
-		fields fields
-		args   args
-		want   string
+		name              string
+		fields            fields
+		args              args
+		wantNewImportPath string
+		wantNewLine       string
 	}{
 		// TODO: Add test cases.
 	}
@@ -107,8 +108,12 @@ func Test_pathResolver_ChangeMovedFileImportPath1(t *testing.T) {
 				entryFilePath: tt.fields.entryFilePath,
 				outputPath:    tt.fields.outputPath,
 			}
-			if got := r.ChangeMovedFileImportPath(tt.args.line, tt.args.importPath); got != tt.want {
-				t.Errorf("ChangeMovedFileImportPath() = %v, want %v", got, tt.want)
+			gotNewImportPath, gotNewLine := r.ChangeMovedFileImportPath(tt.args.line, tt.args.importPath)
+			if gotNewImportPath != tt.wantNewImportPath {
+				t.Errorf("ChangeMovedFileImportPath() gotNewImportPath = %v, want %v", gotNewImportPath, tt.wantNewImportPath)
+			}
+			if gotNewLine != tt.wantNewLine {
+				t.Errorf("ChangeMovedFileImportPath() gotNewLine = %v, want %v", gotNewLine, tt.wantNewLine)
 			}
 		})
 	}
