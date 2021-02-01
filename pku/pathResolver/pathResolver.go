@@ -2,20 +2,33 @@ package pathResolver
 
 import (
 	"fmt"
+	"math/rand"
 	"packyou/pku/errorPkg"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
+	"time"
 )
 
 type pathResolver struct {
 	projectRoot   string
 	entryFilePath string
 	outputPath    string
+	fileMap       map[string]string
+	lookupFileMap map[string]string
 }
 
 func New(projectRoot string, entryFilePath string, outputPath string) *pathResolver {
-	return &pathResolver{projectRoot: projectRoot, entryFilePath: entryFilePath, outputPath: outputPath}
+	return &pathResolver{
+		projectRoot: projectRoot,
+		entryFilePath: entryFilePath,
+		outputPath: outputPath,
+		// This is for checking if there are filename collisions
+		fileMap: make(map[string]string, 0),
+		// This is for retrieving the new file name
+		lookupFileMap: make(map[string]string, 0),
+	}
 }
 
 func (r pathResolver) GetRawImportPathForES6Module(line string) string {
@@ -50,16 +63,56 @@ func (r pathResolver) GetDestFileLocation(currentOriginFilePath string) (string,
 	}
 
 	entryFolderName := r.GetEntryFolderName()
-	fileName := filepath.Base(currentOriginFilePath)
+	fileName := r.lookupFileMap[currentOriginFilePath]
+	if fileName == "" {
+		fileName = filepath.Base(currentOriginFilePath)
+	}
 	outputPath = filepath.Join(outputPath, entryFolderName, fileName)
 
 	return outputPath, err
 }
 
+// getNewFilenameInCaseOfCollision if it detects a naming collision it will generate a new file name
+// and store the new file name into the lookupFileMap for retrieval and fileMap for checking
+func (r *pathResolver) getNewFilenameInCaseOfCollision(currentOriginFilePath string) string {
+	fileName := filepath.Base(currentOriginFilePath)
+
+	if originFilePath, ok := r.fileMap[fileName]; ok {
+		// If the filename is the same but the origin path is different
+		// means that there is going to be a collision
+		if originFilePath != currentOriginFilePath {
+			fileName = r.generateFileNameUniqueId(fileName)
+			r.fileMap[fileName] = currentOriginFilePath
+		}
+	} else {
+		r.fileMap[fileName] = currentOriginFilePath
+	}
+
+	r.lookupFileMap[currentOriginFilePath] = fileName
+
+	return fileName
+}
+
+func (r pathResolver) generateFileNameUniqueId(filename string) string {
+	rand.Seed(time.Now().UnixNano())
+	randomString := strconv.Itoa(rand.Intn(10))
+	ext := filepath.Ext(filename)
+	name := strings.Replace(filename, ext, "", 1)
+	return name +randomString+ext
+}
+
+func (r pathResolver) getNewImportPathInCaseOfCollision(importPath, currentOriginFileLocation string) string {
+	newFileName := r.getNewFilenameInCaseOfCollision(r.GetOriginFileLocation(currentOriginFileLocation, importPath))
+	oldFileName := filepath.Base(importPath)
+	return strings.Replace(importPath, oldFileName, newFileName, 1)
+}
+
 // ChangeMovedFileImportPath since we are moving all the references to the root
 // of the function we need to modify the import path
-func (r pathResolver) ChangeMovedFileImportPath(line string, importPath string) (newImportPath, newLine string) {
+func (r pathResolver) ChangeFileImportPathToNewLocation(line string, importPath string, currentOriginFileLocation string) (newLine string, newImportPath string) {
+	importPath = r.getNewImportPathInCaseOfCollision(importPath, currentOriginFileLocation)
 	importPathDir := filepath.Dir(importPath)
+	// Temporary replace the importPath in the line with a placeholder
 	newLine = strings.ReplaceAll(line, importPath, "#__#")
 
 	// Count how many "../" (go to parent we have)
@@ -119,14 +172,13 @@ func (r pathResolver) IsUnnamedES6Import(line string) bool {
 	return !strings.Contains(line, "from")
 }
 
-
 type PathResolver interface {
 	GetRawImportPathForES6Module(line string) string
 	ExtractImportPathFromLine(line string) string
 	CleanRawImportPath(rawImportPath string) string
 	GetOriginFileLocation(currentOriginFilePath, importPath string) string
 	GetDestFileLocation(currentOriginFilePath string) (string, error)
-	ChangeMovedFileImportPath(line string, importPath string) (newLine string, newImportPath string)
+	ChangeFileImportPathToNewLocation(line string, importPath string, originFileLocation string) (newLine string, newImportPath string)
 	GetEntryAbs() string
 	GetAbsEntryFilePath() string
 	GetEntryFolderName() string

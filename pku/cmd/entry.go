@@ -17,6 +17,10 @@ var (
 	comp compiler.Compiler
 )
 
+// Naming conventions:
+// FileImportPath: is the actual import path appearing in the import declaration: "./path/to/file"
+// Line: the line of code from the file
+
 func initializeCommand(cmd *cobra.Command, getConfig func(key string) interface{}) {
 	entry := cmd.Flag("entry").Value.String()
 	projectRoot := cmd.Flag("projectRoot").Value.String()
@@ -32,8 +36,8 @@ func initializeCommand(cmd *cobra.Command, getConfig func(key string) interface{
 }
 
 
-func collect(originFilePath string) error {
-	file, err := fileRepo.GetFile(originFilePath)
+func collect(originFileLocation string) error {
+	file, err := fileRepo.GetFile(originFileLocation)
 	if err != nil {
 		return errorPkg.New(err, "collect")
 	}
@@ -41,7 +45,7 @@ func collect(originFilePath string) error {
 	lines := strings.Split(string(file), "\n")
 	for _, line := range lines {
 		if pathRes.IsES6Module(line) {
-			if err := parseES6Module(line, originFilePath); err != nil {
+			if err := parseES6Module(line, originFileLocation); err != nil {
 				return errorPkg.New(err, "collect")
 			}
 		}
@@ -52,7 +56,7 @@ func collect(originFilePath string) error {
 	}
 
 	newFile := fileRepo.RewriteToFile(string(file))
-	destFileLocation, err := pathRes.GetDestFileLocation(originFilePath)
+	destFileLocation, err := pathRes.GetDestFileLocation(originFileLocation)
 	if err != nil {
 		return errorPkg.New(err, "collect")
 	}
@@ -70,9 +74,10 @@ func parseES6Module(line, currentOriginFilePath string) error {
 		// TODO: handle un-named imports "import babel/regenerator"
 		// no-op
 		return nil
+	} else {
+		importPath = pathRes.ExtractImportPathFromLine(line)
 	}
 
-	importPath = pathRes.ExtractImportPathFromLine(line)
 	if pathRes.IsNodeModule(importPath) {
 		// TODO: for now just copy node_modules into the dest folder
 		// no-op
@@ -80,17 +85,8 @@ func parseES6Module(line, currentOriginFilePath string) error {
 	}
 
 	originFileLocation := pathRes.GetOriginFileLocation(currentOriginFilePath, importPath)
-	destFileLocation, err := pathRes.GetDestFileLocation(originFileLocation)
-	if err != nil {
-		return errorPkg.New(err, "parseES6Module")
-	}
-
-	if err := fileRepo.MoveFileToDest(originFileLocation, destFileLocation); err != nil {
-		return errorPkg.New(err, "parseES6Module")
-	}
-
-	newLine, newImportPath := pathRes.ChangeMovedFileImportPath(line, importPath)
-	newLine = comp.TransformImport(newLine, newImportPath)
+	newLine, newImportPath := pathRes.ChangeFileImportPathToNewLocation(line, importPath, currentOriginFilePath)
+	newLine = comp.TransformImportToCommonJs(newLine, newImportPath)
 	fileRepo.AddRewrite(line, newLine)
 
 	return collect(originFileLocation)

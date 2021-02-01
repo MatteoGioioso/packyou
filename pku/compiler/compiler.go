@@ -16,7 +16,7 @@ func New(pathResolver pathResolver.PathResolver) *compiler {
 	}
 }
 
-func (c compiler) TransformImport(line string, importPath string) string {
+func (c compiler) TransformImportToCommonJs(line string, importPath string) string {
 	if c.pathResolver.IsUnnamedES6Import(line) {
 		return fmt.Sprintf("require('%v');", importPath)
 	} else {
@@ -26,11 +26,11 @@ func (c compiler) TransformImport(line string, importPath string) string {
 	}
 }
 
-func (c compiler) TransformExport(line string) string {
+func (c compiler) TransformExportToCommonJs(line string) string {
 	panic("not implemented")
 }
 
 type Compiler interface {
-	TransformImport(line string, importPath string) string
-	TransformExport(line string) string
+	TransformImportToCommonJs(line string, importPath string) string
+	TransformExportToCommonJs(line string) string
 }

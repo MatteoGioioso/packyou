@@ -11,6 +11,7 @@ import (
 
 type fileRepository struct {
 	rewrites map[string]string
+	fileMap map[string]string
 }
 
 func New() *fileRepository {

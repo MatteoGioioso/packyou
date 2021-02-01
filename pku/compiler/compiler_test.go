@@ -47,7 +47,7 @@ func Test_compiler_TransformImport(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			c := compiler.New(pathResolver.New("", "", ""))
 
-			res := c.TransformImport(tt.args.line, tt.args.importPath)
+			res := c.TransformImportToCommonJs(tt.args.line, tt.args.importPath)
 
 			g.Expect(res).Should(gomega.Equal(tt.want))
 		})

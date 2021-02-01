@@ -7,3 +7,7 @@ additional dependencies
 
 The javascript bundling landscape is too sophisticated, 
 10 packages and half of the internet to transpile and bundle 8 files of 5KBs each?
+
+## Roadmap
+
+- Add parser for AST
