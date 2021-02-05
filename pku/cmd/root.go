@@ -18,7 +18,7 @@ var rootCmd = &cobra.Command{
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
 	Run: func(cmd *cobra.Command, args []string) {
-		initializeCommand(cmd, viper.Get)
+		initializeCommand(cmd)
 	},
 }
 
@@ -41,14 +41,12 @@ func init() {
 	// will be global for your application.
 	rootCmd.Flags().StringVarP(&Entry, "entry", "e", "", "file entry point (required)")
 	rootCmd.MarkFlagRequired("entry")
-	rootCmd.Flags().StringVarP(&ProjectRoot, "projectRoot", "r", "", "project root folder")
+	rootCmd.Flags().StringVarP(&ProjectRoot, "project-root", "r", "", "project root folder")
 	rootCmd.Flags().StringVarP(&Output, "output", "o", "", "output path")
+	rootCmd.Flags().BoolP("compile-commonjs", "c", false, "compile ESM to commonjs modules")
+	rootCmd.Flags().BoolP("add-extension", "x", false, "add .js extension to the import path in case you use ESM")
 
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.pku.yaml)")
-
-	// Cobra also supports local flags, which will only run
-	// when this action is called directly.
-	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
 
 // initConfig reads in config file and ENV variables if set.
@@ -68,6 +66,8 @@ func initConfig() {
 		viper.AddConfigPath(home)
 		viper.SetConfigName(".packyou")
 	}
+
+	viper.Set("Hello", "world")
 
 	viper.AutomaticEnv() // read in environment variables that match
 

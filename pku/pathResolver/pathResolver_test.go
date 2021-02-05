@@ -24,7 +24,7 @@ func Test_pathResolver_ChangeMovedFileImportPath(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			f := pathResolver{}
 
-			newPath, _ := f.ChangeFileImportPathToNewLocation(tt.args.path, "", "")
+			_ := f.ChangeFileImportPathToNewLocation("", "")
 
 			g.Expect(newPath).Should(gomega.Equal(tt.want))
 		})
@@ -108,7 +108,7 @@ func Test_pathResolver_ChangeMovedFileImportPath1(t *testing.T) {
 				entryFilePath: tt.fields.entryFilePath,
 				outputPath:    tt.fields.outputPath,
 			}
-			gotNewImportPath, gotNewLine := r.ChangeFileImportPathToNewLocation(tt.args.line, tt.args.importPath, "")
+			gotNewLine := r.ChangeFileImportPathToNewLocation(tt.args.importPath, "")
 			if gotNewImportPath != tt.wantNewImportPath {
 				t.Errorf("ChangeFileImportPathToNewLocation() gotNewImportPath = %v, want %v", gotNewImportPath, tt.wantNewImportPath)
 			}

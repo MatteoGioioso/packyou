@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"log"
 	"packyou/pku/compiler"
 	"packyou/pku/errorPkg"
@@ -13,18 +14,27 @@ import (
 
 var (
 	fileRepo fileRepository.FileRepository
-	pathRes pathResolver.PathResolver
-	comp compiler.Compiler
+	pathRes  pathResolver.PathResolver
+	comp     compiler.Compiler
 )
 
 // Naming conventions:
 // FileImportPath: is the actual import path appearing in the import declaration: "./path/to/file"
 // Line: the line of code from the file
 
-func initializeCommand(cmd *cobra.Command, getConfig func(key string) interface{}) {
+func initializeCommand(cmd *cobra.Command) {
 	entry := cmd.Flag("entry").Value.String()
-	projectRoot := cmd.Flag("projectRoot").Value.String()
+	projectRoot := cmd.Flag("project-root").Value.String()
 	output := cmd.Flag("output").Value.String()
+	compileToCommonjs := cmd.Flag("compile-commonjs").Value.String()
+	addExtension := cmd.Flag("add-extension").Value.String()
+
+	viper.Set("entry", entry)
+	viper.Set("output", output)
+	viper.Set("projectRoot", projectRoot)
+	viper.Set("compileCommonjs", compileToCommonjs)
+	viper.Set("addExtension", addExtension)
+
 	fileRepo = fileRepository.New()
 	pathRes = pathResolver.New(projectRoot, entry, output)
 	comp = compiler.New(pathRes)
@@ -34,7 +44,6 @@ func initializeCommand(cmd *cobra.Command, getConfig func(key string) interface{
 		log.Fatal(err)
 	}
 }
-
 
 func collect(originFileLocation string) error {
 	file, err := fileRepo.GetFile(originFileLocation)
@@ -85,8 +94,14 @@ func parseES6Module(line, currentOriginFilePath string) error {
 	}
 
 	originFileLocation := pathRes.GetOriginFileLocation(currentOriginFilePath, importPath)
-	newLine, newImportPath := pathRes.ChangeFileImportPathToNewLocation(line, importPath, currentOriginFilePath)
-	newLine = comp.TransformImportToCommonJs(newLine, newImportPath)
+	newImportPath := pathRes.ChangeFileImportPathToNewLocation(importPath, currentOriginFilePath)
+	var newLine string
+	if viper.Get("compileCommonjs") == "true" {
+		newLine = comp.TransformImportToCommonJs(line, newImportPath)
+	} else {
+		newLine = pathRes.ChangeLineWithNewImportPath(line, newImportPath)
+	}
+
 	fileRepo.AddRewrite(line, newLine)
 
 	return collect(originFileLocation)

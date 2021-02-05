@@ -74,26 +74,26 @@ func (r pathResolver) GetDestFileLocation(currentOriginFilePath string) (string,
 
 // getNewFilenameInCaseOfCollision if it detects a naming collision it will generate a new file name
 // and store the new file name into the lookupFileMap for retrieval and fileMap for checking
-func (r *pathResolver) getNewFilenameInCaseOfCollision(currentOriginFilePath string) string {
-	fileName := filepath.Base(currentOriginFilePath)
+func (r *pathResolver) getNewFilenameInCaseOfCollision(filePath string) string {
+	fileName := filepath.Base(filePath)
 
 	if originFilePath, ok := r.fileMap[fileName]; ok {
 		// If the filename is the same but the origin path is different
 		// means that there is going to be a collision
-		if originFilePath != currentOriginFilePath {
-			fileName = r.generateFileNameUniqueId(fileName)
-			r.fileMap[fileName] = currentOriginFilePath
+		if originFilePath != filePath {
+			fileName = r.generateUniqueFileName(fileName)
+			r.fileMap[fileName] = filePath
 		}
 	} else {
-		r.fileMap[fileName] = currentOriginFilePath
+		r.fileMap[fileName] = filePath
 	}
 
-	r.lookupFileMap[currentOriginFilePath] = fileName
+	r.lookupFileMap[filePath] = fileName
 
 	return fileName
 }
 
-func (r pathResolver) generateFileNameUniqueId(filename string) string {
+func (r pathResolver) generateUniqueFileName(filename string) string {
 	rand.Seed(time.Now().UnixNano())
 	randomString := strconv.Itoa(rand.Intn(10))
 	ext := filepath.Ext(filename)
@@ -102,31 +102,39 @@ func (r pathResolver) generateFileNameUniqueId(filename string) string {
 }
 
 func (r pathResolver) getNewImportPathInCaseOfCollision(importPath, currentOriginFileLocation string) string {
-	newFileName := r.getNewFilenameInCaseOfCollision(r.GetOriginFileLocation(currentOriginFileLocation, importPath))
+	filePath := r.GetOriginFileLocation(currentOriginFileLocation, importPath)
+	newFileName := r.getNewFilenameInCaseOfCollision(filePath)
 	oldFileName := filepath.Base(importPath)
 	return strings.Replace(importPath, oldFileName, newFileName, 1)
 }
 
 // ChangeMovedFileImportPath since we are moving all the references to the root
 // of the function we need to modify the import path
-func (r pathResolver) ChangeFileImportPathToNewLocation(line string, importPath string, currentOriginFileLocation string) (newLine string, newImportPath string) {
+func (r pathResolver) ChangeFileImportPathToNewLocation(importPath string, currentOriginFileLocation string) (newImportPath string) {
 	importPath = r.getNewImportPathInCaseOfCollision(importPath, currentOriginFileLocation)
 	importPathDir := filepath.Dir(importPath)
 	// Temporary replace the importPath in the line with a placeholder
-	newLine = strings.ReplaceAll(line, importPath, "#__#")
+	// later we will use it to put the new import path
+	importPath = strings.Replace(importPath, filepath.Ext(importPath), "", 1)
 
-	// Count how many "../" (go to parent we have)
+	// Count how many "../" we have
 	aORb := regexp.MustCompile("\\.\\./") // Match ../
 	matches := aORb.FindAllString(importPath, -1)
+
 	// Remove all the "../" and add "./"
 	newImportPath = strings.Replace(importPath, "../", "", len(matches)-1)
 	newImportPath = strings.Replace(newImportPath, "../", "./", 1)
+
 	// Remove the sub directories by replacing with the import path directory
 	newImportPath = strings.Replace(newImportPath, importPathDir+"/", "", 1)
 
-	newLine = strings.ReplaceAll(line, "#__#", newImportPath)
+	return newImportPath
+}
 
-	return newLine, newImportPath
+func (r pathResolver) ChangeLineWithNewImportPath(line, importPath string) string {
+	varDeclaration := strings.Split(line, "from")[0]
+	newLine := fmt.Sprintf("%v from '%v'", varDeclaration, importPath)
+	return newLine
 }
 
 func (r pathResolver) GetEntryAbs() string {
@@ -178,7 +186,8 @@ type PathResolver interface {
 	CleanRawImportPath(rawImportPath string) string
 	GetOriginFileLocation(currentOriginFilePath, importPath string) string
 	GetDestFileLocation(currentOriginFilePath string) (string, error)
-	ChangeFileImportPathToNewLocation(line string, importPath string, originFileLocation string) (newLine string, newImportPath string)
+	ChangeFileImportPathToNewLocation(importPath string, currentOriginFileLocation string) (newImportPath string)
+	ChangeLineWithNewImportPath(line, importPath string) string
 	GetEntryAbs() string
 	GetAbsEntryFilePath() string
 	GetEntryFolderName() string
